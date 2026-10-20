@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แดชบอร์ดสรุปผลการตรวจสอบ (Auditor Performance Dashboard)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts (Prompt & Inter) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- SheetJS (xlsx) สำหรับอ่านไฟล์ Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Chart.js สำหรับสร้างกราฟ -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome สำหรับไอคอน -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Prompt', 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 380px;
+        }
+        @media (min-width: 1024px) {
+            .chart-container {
+                height: 420px;
+            }
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Header Navigation -->
+    <header class="bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="bg-white/10 p-2.5 rounded-xl backdrop-blur-md shadow-inner">
+                    <i class="fa-solid fa-chart-line text-2xl text-blue-200"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl md:text-2xl font-bold tracking-tight">แดชบอร์ดติดตามงานตรวจสอบ</h1>
+                    <p class="text-xs text-blue-200">วิเคราะห์ผลงานผู้ตรวจสอบจากคอลัมน์ "ผู้ตรวจสอบ" (คอลัมน์ R)</p>
+                </div>
+            </div>
+            
+            <!-- Controls: File Upload & Sample Data -->
+            <div class="flex items-center gap-3">
+                <label for="excelFile" class="cursor-pointer bg-white text-blue-700 hover:bg-blue-50 font-medium px-5 py-2.5 rounded-xl shadow transition duration-200 flex items-center gap-2 text-sm">
+                    <i class="fa-solid fa-file-excel text-emerald-600 text-lg"></i>
+                    <span>อัปโหลดไฟล์ Excel</span>
+                </label>
+                <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" class="hidden">
+                <button onclick="loadSampleData()" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-2.5 rounded-xl shadow transition duration-200 text-sm flex items-center gap-2 border border-blue-500">
+                    <i class="fa-solid fa-database"></i> โหลดข้อมูลตัวอย่าง
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-grow w-full space-y-6">
+
+        <!-- Welcome Banner / Empty State -->
+        <div id="welcomeCard" class="bg-gradient-to-br from-blue-50 via-indigo-50 to-slate-50 border border-blue-100 rounded-2xl p-10 text-center shadow-sm">
+            <div class="max-w-md mx-auto space-y-4">
+                <div class="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto text-3xl shadow-inner">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-800">ยินดีต้อนรับสู่ระบบวิเคราะห์งานตรวจสอบ</h2>
+                <p class="text-sm text-slate-600 leading-relaxed">กรุณาอัปโหลดไฟล์ Excel ของคุณ หรือคลิกปุ่ม <strong>"โหลดข้อมูลตัวอย่าง"</strong> เพื่อดูแดชบอร์ดและกราฟสถิติต่างๆ ทันที</p>
+            </div>
+        </div>
+
+        <!-- Dashboard Active Content (Hidden initially) -->
+        <div id="dashboardContent" class="hidden space-y-6">
+
+            <!-- KPI Cards Section -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">งานทั้งหมด</p>
+                        <h3 id="kpiTotal" class="text-2xl font-bold text-slate-800 mt-1">0</h3>
+                        <span class="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded">รายการทั้งหมด</span>
+                    </div>
+                    <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-xl shadow-sm">
+                        <i class="fa-solid fa-file-lines"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">ตรวจแล้ว</p>
+                        <h3 id="kpiChecked" class="text-2xl font-bold text-emerald-600 mt-1">0</h3>
+                        <span id="kpiCheckedPercent" class="text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded">0%</span>
+                    </div>
+                    <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-xl shadow-sm">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">ยังไม่ตรวจ / รอตรวจ</p>
+                        <h3 id="kpiUnchecked" class="text-2xl font-bold text-amber-600 mt-1">0</h3>
+                        <span id="kpiUncheckedPercent" class="text-xs text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded">0%</span>
+                    </div>
+                    <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center text-xl shadow-sm">
+                        <i class="fa-solid fa-clock"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">ผู้ตรวจสอบทั้งหมด</p>
+                        <h3 id="kpiAuditors" class="text-2xl font-bold text-indigo-600 mt-1">0</h3>
+                        <span class="text-xs text-indigo-600 font-medium bg-indigo-50 px-2 py-0.5 rounded">คน Active</span>
+                    </div>
+                    <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-xl shadow-sm">
+                        <i class="fa-solid fa-users"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart 1: Auditor Comparison (Stacked Bar Chart) -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-2">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800">กราฟเปรียบเทียบผลงานรายบุคคล (ผู้ตรวจสอบ - คอลัมน์ R)</h2>
+                        <p class="text-xs text-slate-500">แสดงจำนวนงานที่ตรวจแล้วและยังไม่ตรวจในแท่งเดียวกัน (จัดเรียงตามปริมาณงาน)</p>
+                    </div>
+                    <span class="inline-flex items-center text-xs text-blue-700 bg-blue-50 px-3 py-1 rounded-full font-medium">
+                        <i class="fa-solid fa-chart-column mr-1.5"></i> Stacked Bar Chart
+                    </span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="auditorChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Chart 2: Time Series Trend (Daily, Weekly, Monthly) -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800">แนวโน้มปริมาณงานตามช่วงเวลา (จากวันที่เริ่มต้น)</h2>
+                        <p class="text-xs text-slate-500">เลือกมุมมองสถิติเพื่อดูภาพรวมการทำงานในแต่ละช่วง</p>
+                    </div>
+                    <!-- Timeframe Switcher Tabs -->
+                    <div class="flex bg-slate-100 p-1 rounded-xl">
+                        <button onclick="switchTimeframe('daily')" id="btnDaily" class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-white text-blue-700 shadow-sm transition">รายวัน</button>
+                        <button onclick="switchTimeframe('weekly')" id="btnWeekly" class="px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition">รายสัปดาห์</button>
+                        <button onclick="switchTimeframe('monthly')" id="btnMonthly" class="px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition">รายเดือน</button>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="timeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Tables Grid Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Auditor Summary Table -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 lg:col-span-1 flex flex-col">
+                    <h2 class="text-lg font-bold text-slate-800 mb-1">สรุปผลงานรายบุคคล</h2>
+                    <p class="text-xs text-slate-500 mb-4">ตารางแจกแจงสถิติแยกตามชื่อผู้ตรวจสอบ</p>
+                    <div class="overflow-y-auto flex-grow max-h-96 border border-slate-100 rounded-xl">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-slate-50 sticky top-0 text-xs font-semibold text-slate-600">
+                                <tr>
+                                    <th class="p-3">ผู้ตรวจสอบ</th>
+                                    <th class="p-3 text-right">ตรวจแล้ว</th>
+                                    <th class="p-3 text-right">ยังไม่ตรวจ</th>
+                                    <th class="p-3 text-right">รวม</th>
+                                </tr>
+                            </thead>
+                            <tbody id="auditorSummaryTable" class="divide-y divide-slate-100 text-xs">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Raw Data Table with Search & Pagination -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 lg:col-span-2 flex flex-col">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-800 mb-1">ข้อมูลดิบจากการอัปโหลด</h2>
+                            <p class="text-xs text-slate-500">แสดงรายการทั้งหมดในไฟล์ Excel</p>
+                        </div>
+                        <div class="w-full sm:w-auto">
+                            <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="ค้นหาชื่อผู้ตรวจสอบ, สถานะ, วันที่..." class="w-full sm:w-64 px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto overflow-y-auto flex-grow max-h-96 border border-slate-100 rounded-xl">
+                        <table id="dataTable" class="w-full text-left border-collapse whitespace-nowrap">
+                            <thead class="bg-slate-50 sticky top-0 text-xs font-semibold text-slate-600" id="tableHeader">
+                                <!-- Dynamic headers -->
+                            </thead>
+                            <tbody id="tableBody" class="divide-y divide-slate-100 text-xs">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Pagination Controls -->
+                    <div class="flex justify-between items-center mt-4 text-xs text-slate-500">
+                        <span id="paginationInfo">แสดง 0 ถึง 0 จาก 0 รายการ</span>
+                        <div class="flex gap-2">
+                            <button onclick="changePage(-1)" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg transition font-medium text-slate-700">ก่อนหน้า</button>
+                            <button onclick="changePage(1)" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg transition font-medium text-slate-700">ถัดไป</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 mt-auto py-4 text-center text-xs text-slate-500">
+        <p>Auditor Performance Dashboard &bull; รองรับการวิเคราะห์ข้อมูลไฟล์ Excel และ CSV อย่างเต็มรูปแบบ</p>
+    </footer>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        let globalRawData = [];
+        let filteredData = [];
+        let currentPage = 1;
+        const rowsPerPage = 50;
+
+        let auditorChartInstance = null;
+        let timeChartInstance = null;
+        let currentTimeframe = 'daily';
+        let processedStats = {};
+
+        // Event listener สำหรับการอัปโหลดไฟล์ Excel
+        document.getElementById('excelFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    const json = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+                    if (json.length === 0) {
+                        alert("ไม่พบข้อมูลในไฟล์ Excel กรุณาตรวจสอบรูปแบบไฟล์");
+                        return;
+                    }
+                    processDataAndRender(json);
+                } catch (error) {
+                    console.error(error);
+                    alert("เกิดข้อผิดพลาดในการอ่านไฟล์ Excel: " + error.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // ฟังก์ชันโหลดข้อมูลตัวอย่าง Mock Data (จำลองโครงสร้างตามภาพตัวอย่าง คอลัมน์ "ผู้ตรวจสอบ" อยู่ท้ายสุด)
+        function loadSampleData() {
+            const sampleRows = [
+                { "ลำดับ": 1, "หมายเลขรถ": "33 61-8797", "พนักงาน": "SCCPTT-COD BRP", "ชื่อคนขับ": "Suwit Kaewchan", "ประเภทการละเมิด": "Forward Collision-A", "วันที่เริ่มต้น": "01-10-2026", "เวลาเริ่มต้น": "5:00:12", "ชื่อผู้ใช้เบส": "SC Group,SCcarrier", "สถานที่": "ทางด่วนมอเตอร์เวย์", "สถานะการตรวจ": "ตรวจแล้ว", "ผู้ตรวจสอบ": "สันติภาพ รัฐผา" },
+                { "ลำดับ": 2, "หมายเลขรถ": "50 77-504_62-5209", "พนักงาน": "SCCAtlasSRC", "ชื่อคนขับ": "Wuttipong Vongtawee", "ประเภทการละเมิด": "Forward Collision-A", "วันที่เริ่มต้น": "01-10-2026", "เวลาเริ่มต้น": "7:00:27", "ชื่อผู้ใช้เบส": "SC Group,SCcarrier", "สถานที่": "ทางหลวงแผ่นดิน", "สถานะการตรวจ": "ตรวจแล้ว", "ผู้ตรวจสอบ": "เยาวลักษณ์ ทองกาญจน์" },
+                { "ลำดับ": 3, "หมายเลขรถ": "43 79-5843", "พนักงาน": "SCCPTT-COD BRP", "ชื่อคนขับ": "Thara Kaewchan", "ประเภทการละเมิด": "Forward Collision-A", "วันที่เริ่มต้น": "01-10-2026", "เวลาเริ่มต้น": "7:00:27", "ชื่อผู้ใช้เบส": "SC Group,SCcarrier", "สถานที่": "จังหวัดชลบุรี", "สถานะการตรวจ": "รอตรวจสอบ", "ผู้ตรวจสอบ": "สันติภาพ รัฐผา" },
+                { "ลำดับ": 4, "หมายเลขรถ": "49 77-504_62-5209", "พนักงาน": "SCCAtlasSRC", "ชื่อคนขับ": "VONGTAWEE IWUTTIPOI", "ประเภทการละเมิด": "Forward Collision-A", "วันที่เริ่มต้น": "01-10-2026", "เวลาเริ่มต้น": "7:39:34", "ชื่อผู้ใช้เบส": "SC Group,SCcarrier", "สถานที่": "อำเภอปลวกแดง", "สถานะการตรวจ": "ตรวจแล้ว", "ผู้ตรวจสอบ": "เยาวลักษณ์ ทองกาญจน์" },
+                { "ลำดับ": 5, "หมายเลขรถ": "113 61-8797", "พนักงาน": "SCCPTT-COD BRP", "ชื่อคนขับ": "Suwit Kaewchan", "ประเภทการละเมิด": "Forward Collision-A", "วันที่เริ่มต้น": "02-10-2026", "เวลาเริ่มต้น": "12:00:24", "ชื่อผู้ใช้เบส": "SC Group,SCcarrier", "สถานที่": "อำเภอบางคล้า", "สถานะการตรวจ": "ตรวจแล้ว", "ผู้ตรวจสอบ": "เยาวลักษณ์ ทองกาญจน์" },
+                { "ลำดับ": 6, "หมายเลขรถ": "114 79-5843", "พนักงาน": "SCCPTT-COD BRP", "ชื่อคนขับ": "Thara Kaewchan", "ประเภทการละเมิด": "Eye Closing-A2", "วันที่เริ่มต้น": "02-10-2026", "เวลาเริ่มต้น": "13:46:14", "ชื่อผู้ใช้เบส": "SC Group,SCcarrier", "สถานที่": "ถนนบางปะกง", "สถานะการตรวจ": "รอตรวจสอบ", "ผู้ตรวจสอบ": "สันติภาพ รัฐผา" },
+                { "ลำดับ": 7, "หมายเลขรถ": "203 77-504_62-5209", "พนักงาน": "SCCAtlasSRC", "ชื่อคนขับ": "Saman Phasuk", "ประเภทการละเมิด": "Forward Collision-A", "วันที่เริ่มต้น": "02-10-2026", "เวลาเริ่มต้น": "6:53:25", "ชื่อผู้ใช้เบส": "SC Group,SCcarrier", "สถานที่": "ถนนสุขุมวิท", "สถานะการตรวจ": "ตรวจแล้ว", "ผู้ตรวจสอบ": "สันติภาพ รัฐผา" },
+                { "ลำดับ": 8, "หมายเลขรถ": "221 77-504_62-5209", "พนักงาน": "SCCAtlasSRC", "ชื่อคนขับ": "Saman Phasuk", "ประเภทการละเมิด": "Forward Collision-A", "วันที่เริ่มต้น": "03-10-2026", "เวลาเริ่มต้น": "7:15:43", "ชื่อผู้ใช้เบส": "SC Group,SCcarrier", "สถานที่": "กรุงเทพมหานคร", "สถานะการตรวจ": "ตรวจแล้ว", "ผู้ตรวจสอบ": "เยาวลักษณ์ ทองกาญจน์" },
+                { "ลำดับ": 9, "หมายเลขรถ": "285 77-504_62-5209", "พนักงาน": "SCCAtlasSRC", "ชื่อคนขับ": "Sangkhom Sitthi", "ประเภทการละเมิด": "Forward Collision-A", "วันที่เริ่มต้น": "05-10-2026", "เวลาเริ่มต้น": "11:53:01", "ชื่อผู้ใช้เบส": "SC Group,SCcarrier", "สถานที่": "อยุธยา", "สถานะการตรวจ": "ตรวจแล้ว", "ผู้ตรวจสอบ": "เยาวลักษณ์ ทองกาญจน์" },
+                { "ลำดับ": 10, "หมายเลขรถ": "482 77-4041", "พนักงาน": "SCCSXL", "ชื่อคนขับ": "Roman Changwat", "ประเภทการละเมิด": "Forward Collision-A", "วันที่เริ่มต้น": "10-10-2026", "เวลาเริ่มต้น": "8:02:21", "ชื่อผู้ใช้เบส": "SC Group,SCcarrier", "สถานที่": "หาดใหญ่", "สถานะการตรวจ": "รอตรวจสอบ", "ผู้ตรวจสอบ": "สันติภาพ รัฐผา" }
+            ];
+            processDataAndRender(sampleRows);
+        }
+
+        // ประมวลผลข้อมูลและสร้างแดชบอร์ด
+        function processDataAndRender(data) {
+            globalRawData = data;
+            filteredData = data;
+            currentPage = 1;
+
+            const sampleItem = data[0];
+            const keys = Object.keys(sampleItem);
+
+            // ค้นหาคอลัมน์สำคัญอัตโนมัติ (ผู้ตรวจสอบ, สถานะการตรวจ, วันที่เริ่มต้น)
+            const auditorKey = keys.find(k => k.includes('ผู้ตรวจสอบ') || k.toLowerCase().includes('auditor')) || keys[keys.length - 1];
+            const statusKey = keys.find(k => k.includes('สถานะ') || k.toLowerCase().includes('status')) || keys[keys.length - 2];
+            const dateKey = keys.find(k => k.includes('วันที่') || k.toLowerCase().includes('date')) || keys[5];
+
+            let total = data.length;
+            let checkedCount = 0;
+            let uncheckedCount = 0;
+
+            const auditorMap = {};
+            const dailyMap = {};
+            const weeklyMap = {};
+            const monthlyMap = {};
+
+            data.forEach(row => {
+                const auditor = String(row[auditorKey] || 'ไม่ระบุผู้ตรวจสอบ').trim();
+                const status = String(row[statusKey] || 'รอตรวจสอบ').trim();
+                
+                let isChecked = false;
+                if (status.includes('ตรวจแล้ว') || status.toLowerCase().includes('checked') || status.toLowerCase().includes('done')) {
+                    isChecked = true;
+                    checkedCount++;
+                } else {
+                    uncheckedCount++;
+                }
+
+                // รวบรวมสถิติรายผู้ตรวจสอบ (จากคอลัมน์ ผู้ตรวจสอบ)
+                if (!auditorMap[auditor]) {
+                    auditorMap[auditor] = { checked: 0, unchecked: 0, total: 0 };
+                }
+                if (isChecked) {
+                    auditorMap[auditor].checked++;
+                } else {
+                    auditorMap[auditor].unchecked++;
+                }
+                auditorMap[auditor].total++;
+
+                // วิเคราะห์ช่วงเวลาจากคอลัมน์ "วันที่เริ่มต้น"
+                let dateStr = String(row[dateKey] || '2026-10-01');
+                let parsedDate = parseDateValue(dateStr);
+
+                if (parsedDate) {
+                    let dayKey = parsedDate.toISOString().split('T')[0];
+                    dailyMap[dayKey] = (dailyMap[dayKey] || 0) + 1;
+
+                    let monthKey = dayKey.substring(0, 7);
+                    monthlyMap[monthKey] = (monthlyMap[monthKey] || 0) + 1;
+
+                    let weekKey = getWeekNumber(parsedDate);
+                    weeklyMap[weekKey] = (weeklyMap[weekKey] || 0) + 1;
+                }
+            });
+
+            // อัปเดต KPI Cards
+            document.getElementById('kpiTotal').innerText = total.toLocaleString();
+            document.getElementById('kpiChecked').innerText = checkedCount.toLocaleString();
+            document.getElementById('kpiCheckedPercent').innerText = ((checkedCount / (total || 1)) * 100).toFixed(1) + '%';
+            document.getElementById('kpiUnchecked').innerText = uncheckedCount.toLocaleString();
+            document.getElementById('kpiUncheckedPercent').innerText = ((uncheckedCount / (total || 1)) * 100).toFixed(1) + '%';
+            document.getElementById('kpiAuditors').innerText = Object.keys(auditorMap).length;
+
+            processedStats = {
+                daily: dailyMap,
+                weekly: weeklyMap,
+                monthly: monthlyMap
+            };
+
+            renderAuditorChart(auditorMap);
+            renderTimeChart(currentTimeframe);
+            renderAuditorSummaryTable(auditorMap);
+            renderDataTable();
+
+            document.getElementById('welcomeCard').classList.add('hidden');
+            document.getElementById('dashboardContent').classList.remove('hidden');
+        }
+
+        // แปลงรูปแบบวันที่รองรับทั้ง String และ Excel Serial Date
+        function parseDateValue(dateStr) {
+            if (!dateStr) return new Date();
+            if (dateStr instanceof Date) return dateStr;
+
+            let parts = String(dateStr).split(/[-/]/);
+            if (parts.length === 3) {
+                let day = parseInt(parts[0], 10);
+                let month = parseInt(parts[1], 10) - 1;
+                let year = parseInt(parts[2], 10);
+                if (year > 2500) year -= 543; // รองรับปี พ.ศ.
+                return new Date(year, month, day);
+            }
+            let d = new Date(dateStr);
+            return isNaN(d.getTime()) ? new Date() : d;
+        }
+
+        function getWeekNumber(d) {
+            d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+            d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+            let yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+            let weekNo = Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+            return d.getUTCFullYear() + '-W' + (weekNo < 10 ? '0' : '') + weekNo;
+        }
+
+        // กราฟเปรียบเทียบผู้ตรวจสอบ (Stacked Bar Chart จัดเรียงจากมากไปน้อย)
+        function renderAuditorChart(auditorMap) {
+            const ctx = document.getElementById('auditorChart').getContext('2d');
+            
+            // เรียงลำดับผู้ตรวจสอบตามจำนวนงานรวมจากมากไปน้อย
+            const sortedAuditors = Object.keys(auditorMap).sort((a, b) => auditorMap[b].total - auditorMap[a].total);
+            
+            const checkedData = sortedAuditors.map(name => auditorMap[name].checked);
+            const uncheckedData = sortedAuditors.map(name => auditorMap[name].unchecked);
+
+            if (auditorChartInstance) {
+                auditorChartInstance.destroy();
+            }
+
+            auditorChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sortedAuditors,
+                    datasets: [
+                        {
+                            label: 'ตรวจแล้ว',
+                            data: checkedData,
+                            backgroundColor: '#10b981', // สีเขียว
+                            borderRadius: 6,
+                        },
+                        {
+                            label: 'รอตรวจสอบ / ยังไม่ตรวจ',
+                            data: uncheckedData,
+                            backgroundColor: '#f59e0b', // สีส้ม
+                            borderRadius: 6,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            stacked: true,
+                            grid: { display: false }
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            grid: { color: '#f1f5f9' }
+                        }
+                    },
+                    plugins: {
+                        legend: { position: 'top' }
+                    }
+                }
+            });
+        }
+
+        // สลับมุมมองช่วงเวลา กราฟแนวโน้ม
+        function switchTimeframe(timeframe) {
+            currentTimeframe = timeframe;
+            
+            document.getElementById('btnDaily').className = timeframe === 'daily' ? 'px-4 py-1.5 text-xs font-semibold rounded-lg bg-white text-blue-700 shadow-sm transition' : 'px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition';
+            document.getElementById('btnWeekly').className = timeframe === 'weekly' ? 'px-4 py-1.5 text-xs font-semibold rounded-lg bg-white text-blue-700 shadow-sm transition' : 'px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition';
+            document.getElementById('btnMonthly').className = timeframe === 'monthly' ? 'px-4 py-1.5 text-xs font-semibold rounded-lg bg-white text-blue-700 shadow-sm transition' : 'px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition';
+
+            renderTimeChart(timeframe);
+        }
+
+        function renderTimeChart(timeframe) {
+            const ctx = document.getElementById('timeChart').getContext('2d');
+            const dataObj = processedStats[timeframe] || {};
+            
+            const sortedKeys = Object.keys(dataObj).sort();
+            const values = sortedKeys.map(k => dataObj[k]);
+
+            let labelTitle = 'รายวัน (Daily)';
+            if (timeframe === 'weekly') labelTitle = 'รายสัปดาห์ (Weekly)';
+            if (timeframe === 'monthly') labelTitle = 'รายเดือน (Monthly)';
+
+            if (timeChartInstance) {
+                timeChartInstance.destroy();
+            }
+
+            timeChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: sortedKeys.length > 0 ? sortedKeys : ['ไม่มีข้อมูล'],
+                    datasets: [{
+                        label: `จำนวนงานตรวจสอบ (${labelTitle})`,
+                        data: values.length > 0 ? values : [0],
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.3,
+                        pointBackgroundColor: '#2563eb',
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f1f5f9' }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        // ตารางสรุปผลงานรายบุคคล
+        function renderAuditorSummaryTable(auditorMap) {
+            const tbody = document.getElementById('auditorSummaryTable');
+            tbody.innerHTML = '';
+
+            const sortedAuditors = Object.keys(auditorMap).sort((a, b) => auditorMap[b].total - auditorMap[a].total);
+
+            sortedAuditors.forEach(name => {
+                const stats = auditorMap[name];
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition';
+                tr.innerHTML = `
+                    <td class="p-3 font-medium text-slate-800">${name}</td>
+                    <td class="p-3 text-right text-emerald-600 font-semibold">${stats.checked.toLocaleString()}</td>
+                    <td class="p-3 text-right text-amber-600 font-semibold">${stats.unchecked.toLocaleString()}</td>
+                    <td class="p-3 text-right text-slate-800 font-bold">${stats.total.toLocaleString()}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ตารางข้อมูลดิบและการแบ่งหน้า (Pagination)
+        function renderDataTable() {
+            const thead = document.getElementById('tableHeader');
+            const tbody = document.getElementById('tableBody');
+            
+            thead.innerHTML = '';
+            tbody.innerHTML = '';
+
+            if (filteredData.length === 0) return;
+
+            const keys = Object.keys(filteredData[0]);
+
+            let headerTr = document.createElement('tr');
+            keys.forEach(key => {
+                let th = document.createElement('th');
+                th.className = 'p-3 font-semibold text-slate-600';
+                th.innerText = key;
+                headerTr.appendChild(th);
+            });
+            thead.appendChild(headerTr);
+
+            const startIdx = (currentPage - 1) * rowsPerPage;
+            const endIdx = Math.min(startIdx + rowsPerPage, filteredData.length);
+            const paginatedRows = filteredData.slice(startIdx, endIdx);
+
+            paginatedRows.forEach(row => {
+                let tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition';
+                keys.forEach(key => {
+                    let td = document.createElement('td');
+                    td.className = 'p-3 text-slate-700';
+                    td.innerText = row[key] !== undefined ? row[key] : '';
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('paginationInfo').innerText = `แสดง ${filteredData.length > 0 ? startIdx + 1 : 0} ถึง ${endIdx} จาก ${filteredData.length} รายการ`;
+        }
+
+        // ควบคุมการเปลี่ยนหน้าตาราง
+        function changePage(direction) {
+            const totalPages = Math.ceil(filteredData.length / rowsPerPage) || 1;
+            currentPage += direction;
+            if (currentPage < 1) currentPage = 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+            renderDataTable();
+        }
+
+        // ระบบค้นหาข้อมูล
+        function filterTable() {
+            const input = document.getElementById('searchInput').value.toLowerCase();
+            filteredData = globalRawData.filter(row => {
+                return Object.values(row).some(val => 
+                    String(val).toLowerCase().includes(input)
+                );
+            });
+            currentPage = 1;
+            renderDataTable();
+        }
+    </script>
+</body>
+</html>
